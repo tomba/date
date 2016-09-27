@@ -34,6 +34,7 @@
 #define SUBSECS_H_
 
 #include <chrono>
+#include <cmath>
 #include <ostream>
 #include <limits>
 #include <locale>
@@ -69,6 +70,41 @@ CONSTCD14 To floor(const std::chrono::duration<Rep, Period>& d);
 
 namespace detail {
 
+// first (bool) arg will be true if val >= 10 (another division step is possible)
+// false otherwise.
+template <bool, std::uintmax_t v>
+struct static_ceil_log10_imp;
+
+// recursion will also stop when val==1 (floor_ceil==0) with no reminder
+template <>
+struct static_ceil_log10_imp<false, 1>
+{
+    static CONSTDATA unsigned value         = 0;
+    static CONSTDATA bool     has_remainder = 0;
+};
+
+// Recursion will stop when (1 < val < b). For val==1, the more specific
+// specialization above is preferred.
+// value needs to be zero, we'll be adding 1 because it has_remainder
+template <std::uintmax_t v>
+struct static_ceil_log10_imp<false, v>
+{
+    static CONSTDATA unsigned value         = 0;
+    static CONSTDATA bool     has_remainder = 1;
+};
+
+
+// if val>=b (first arg to true),
+// recursively call yourself with the v/b.
+// Record your reminder existence or any reminder existence on the way down
+template <std::uintmax_t v>
+struct static_ceil_log10_imp<true, v>
+{
+    using recurse_step = static_ceil_log10_imp< (v/10 >= 10), v/10>;
+    static CONSTDATA unsigned value         = recurse_step::value + 1;
+    static CONSTDATA bool     has_remainder = ( v % 10 ) || recurse_step::has_remainder;
+};
+
 
 // The algorithm for ceil_log using div/mod:
 // - repeatedly divide the value by base, until the result is
@@ -77,88 +113,39 @@ namespace detail {
 //  - if at any division step above there is a reminder, then
 //    ceil_log is floor_log+1. If no reminder at any step, then
 //    floor_log=ceil_log(=log)
-// The internal floor_log_tag does the divisions recursively and stores
+// The internal static_ceil_log10_imp does the divisions recursively and stores
 //  the floor_log as the value + the information on whether or not
 //  a reminder has been detected.
-template <std::uintmax_t val, std::uintmax_t base>
-struct ceil_log_struct {
+template <std::uintmax_t val>
+struct static_ceil_log10
+{
 private:
-  // first (bool) arg will be true if val >= base (another division step is possible)
-  // false otherwise.
-  template <bool, std::uintmax_t v, std::uintmax_t b=10>
-  struct floor_log_tag;
+    static_assert(val > 0, "don't accept a zero for the argument of log");
 
-  // recursion will also stop when val==1 (floor_ceil==0) with no reminder
-  template <std::uintmax_t b>
-  struct floor_log_tag<false, 1, b> {
-    static CONSTDATA unsigned value=0;
-    static CONSTDATA bool     has_reminder=0;
-  };
-
-  // Recursion will stop when (1 < val < b). For val==1, the more specific
-  // specialization above is preferred.
-  template <std::uintmax_t v, std::uintmax_t b>
-  struct floor_log_tag<false, v, b> {
-    static CONSTDATA unsigned value=0; // needs to be zero, we'll be adding 1 because it has_reminder
-    static CONSTDATA bool     has_reminder=1;
-  };
-
-
-  // if val>=b (first arg to true),
-  // recursively call yourself with the v/b.
-  // Record your reminder existence or any reminder existence on the way down
-  template <std::uintmax_t v, std::uintmax_t b>
-  struct floor_log_tag<true, v, b> {
-    using recurse_step = floor_log_tag< (v/b>=b), v/b, b>;
-    static CONSTDATA unsigned value=recurse_step::value+1;
-    static CONSTDATA bool     has_reminder=( v % b ) || recurse_step::has_reminder;
-  };
-
-  using sfinae_guard_type=typename std::enable_if<
-        (base>1) // don't accept base of 0 or 1, they don't make sense
-    &&  (val>0)  // don't accept a zero for the argument of log
-  >::type;
-
-  using floor_log= floor_log_tag<(val>=base), val, base>;
+    using floor_log = static_ceil_log10_imp<(val >= 10), val>;
 public:
-  static CONSTDATA unsigned value=
-      floor_log::value
-    + static_cast<std::uintmax_t>(floor_log::has_reminder)
-  ;
-
+    static CONSTDATA unsigned value = floor_log::value +
+                                      static_cast<unsigned>(floor_log::has_remainder);
 };
 
 // ------
-// ***Warning: note the unusual order of (power, base) for the parameters
-// *** due to the default val for the base
+// Compute 10^exponent
 
-template <unsigned long exponent, std::uintmax_t base=10>
-struct pow_struct
+template <unsigned exponent>
+struct static_pow10
 {
 private:
-  static CONSTDATA std::uintmax_t at_half_pow=pow_struct<exponent / 2, base>::value;
+    static CONSTDATA std::uintmax_t at_half_pow = static_pow10<exponent / 2>::value;
 public:
-  static CONSTDATA std::uintmax_t value=
-      at_half_pow*at_half_pow*(exponent % 2 ? base : 1)
-  ;
+    static CONSTDATA std::uintmax_t value = at_half_pow * at_half_pow *
+                                            (exponent % 2 ? 10 : 1);
 };
 
-template <std::uintmax_t base>
-struct pow_struct<1, base>
+template <>
+struct static_pow10<0>
 {
-  static CONSTDATA std::uintmax_t value=base;
+    static CONSTDATA std::uintmax_t value = 1;
 };
-
-
-template <std::uintmax_t base>
-struct pow_struct<0,base>
-{
-  static CONSTDATA std::uintmax_t value=1;
-};
-
-#define POW10(width) (pow_struct<(width), 10>::value)
-#define CEIL_LOG10(val) (ceil_log_struct<(val),10>::value)
-
 
 // Inserting a right-aligned, 0-filled literal representation in base10
 // of an integral number of type T, strictly obeying the limits of a specified
@@ -175,7 +162,7 @@ private:
   using type=typename std::enable_if<std::is_arithmetic<T>::value, T>::type;
 
   // the maximum unsigned value representable on 'width' digits
-  static CONSTDATA std::uintmax_t max_val=POW10(width);
+  static CONSTDATA std::uintmax_t max_val=static_pow10<width>::value;
 
   // what the first value we should use for the division to get the first digit
   static CONSTDATA std::uintmax_t div_val=max_val/10;
@@ -243,11 +230,11 @@ struct period_traits {
 
   // Heuristic: denominator also carry the required precision
   static CONSTDATA std::uintmax_t max_val=
-      POW10(CEIL_LOG10(Period::den))
+      static_pow10<static_ceil_log10<Period::den>::value>::value
   ;
 
   // the 'width' occupied by the digits.
-  static CONSTDATA unsigned precision=CEIL_LOG10(max_val);
+  static CONSTDATA unsigned precision=static_ceil_log10<max_val>::value;
 
   // This is the space needed to output the subseconds value in full precision,
   // including the decimal dot.
@@ -403,9 +390,6 @@ public:
     return delegate<admits_subsecs, Period>::put(os, value);
   }
 };
-
-//#undef POW10
-//#undef CEIL_LOG10
 
 } // namespace detail
 } // namespace date
