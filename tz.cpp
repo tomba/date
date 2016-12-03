@@ -126,18 +126,16 @@
 #include <curl/curl.h>
 #endif
 
-static
-char
-get_folder_delimiter()
-{
 #ifdef _WIN32
-  static CONSTDATA char folder_delimiter = '\\';
+
+static CONSTDATA char folder_delimiter = '\\';
+
 #else
-  static CONSTDATA char folder_delimiter = '/';
+
+static CONSTDATA char folder_delimiter = '/';
+
 #endif
 
-  return folder_delimiter;
-}
 #ifdef _WIN32
 
 namespace
@@ -216,30 +214,29 @@ namespace date
 using namespace detail;
 
 static
-std::string
+const std::string&
 get_install()
 {
-  static const std::string install 
+    static const std::string install 
 #ifndef INSTALL
 
-#ifdef _WIN32
-    = get_download_folder() + get_folder_delimiter() + "tzdata";
-#else
+#  ifdef _WIN32
+    = get_download_folder() + folder_delimiter + "tzdata";
+#  else
     = expand_path("~/Downloads/tzdata");
-#endif
+#  endif
 
 #else   // INSTALL
 
-#define STRINGIZEIMP(x) #x
-#define STRINGIZE(x) STRINGIZEIMP(x)
+#  define STRINGIZEIMP(x) #x
+#  define STRINGIZE(x) STRINGIZEIMP(x)
 
-    = STRINGIZE(INSTALL) + std::string(1, get_folder_delimiter()) + "tzdata";
+    = STRINGIZE(INSTALL) + std::string(1, folder_delimiter) + "tzdata";
 
 #endif  // INSTALL
 
     return install;
 }
-
 
 static
 std::string
@@ -2515,7 +2512,7 @@ get_unzip_program()
         }
     }
     path += get_program_folder();
-    path += get_folder_delimiter();
+    path += folder_delimiter;
     path += "7-Zip\\7z.exe";
     return path;
 }
@@ -2555,7 +2552,7 @@ std::string
 get_download_tar_file(const std::string& version)
 {
     auto file = get_install();
-    file += get_folder_delimiter();
+    file += folder_delimiter;
     file += "tzdata";
     file += version;
     file += ".tar";
@@ -2714,7 +2711,7 @@ remote_install(const std::string& version)
 #ifdef TIMEZONE_MAPPING
             auto mapping_file_source = get_download_mapping_file(version);
             auto mapping_file_dest = install;
-            mapping_file_dest += get_folder_delimiter();
+            mapping_file_dest += folder_delimiter;
             mapping_file_dest += "windowsZones.xml";
             if (!move_file(mapping_file_source, mapping_file_dest))
                 success = false;
@@ -2749,7 +2746,7 @@ init_tzdb()
 {
     using namespace date;
     const std::string install = get_install();
-    const std::string path = install + get_folder_delimiter();
+    const std::string path = install + folder_delimiter;
     std::string line;
     bool continue_zone = false;
     TZ_DB db;
@@ -2803,10 +2800,10 @@ init_tzdb()
     db.version = get_version(path);
 #endif  // !AUTO_DOWNLOAD
 
-    static const std::vector<std::string> files =
+    CONSTDATA const char* files[] =
     {
-      "africa", "antarctica", "asia", "australasia", "backward", "etcetera", "europe",
-      "pacificnew", "northamerica", "southamerica", "systemv", "leapseconds"
+        "africa", "antarctica", "asia", "australasia", "backward", "etcetera", "europe",
+        "pacificnew", "northamerica", "southamerica", "systemv", "leapseconds"
     };
 
     for (const auto& filename : files)
