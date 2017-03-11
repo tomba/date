@@ -3395,7 +3395,7 @@ to_stream(std::basic_ostream<CharT, Traits>& os, const CharT* fmt,
           const fields<Duration>& fds, const std::string* abbrev = nullptr,
           const std::chrono::seconds* offset_sec = nullptr);
 
-template <class CharT, class Traits, class Duration, class Alloc = std::allocator<CharT>>
+template <class CharT, class Traits, class Duration, class Alloc>
 void
 from_stream(std::basic_istream<CharT, Traits>& is, const CharT* fmt,
             fields<Duration>& fds, std::basic_string<CharT, Traits, Alloc>* abbrev = nullptr,
@@ -5038,12 +5038,12 @@ format(const CharT* fmt, const Streamable& tp)
     return os.str();
 }
 
-template <class CharT, class Traits, class Streamable>
+template <class CharT, class Traits, class Alloc, class Streamable>
 auto
-format(const std::locale& loc, const std::basic_string<CharT, Traits>& fmt,
+format(const std::locale& loc, const std::basic_string<CharT, Traits, Alloc>& fmt,
        const Streamable& tp)
     -> decltype(to_stream(std::declval<std::basic_ostream<CharT, Traits>&>(), fmt, tp),
-                std::basic_string<CharT, Traits>{})
+                std::basic_string<CharT, Traits, Alloc>{})
 {
     std::basic_ostringstream<CharT, Traits> os;
     os.imbue(loc);
@@ -5051,11 +5051,11 @@ format(const std::locale& loc, const std::basic_string<CharT, Traits>& fmt,
     return os.str();
 }
 
-template <class CharT, class Traits, class Streamable>
+template <class CharT, class Traits, class Alloc, class Streamable>
 auto
-format(const std::basic_string<CharT, Traits>& fmt, const Streamable& tp)
+format(const std::basic_string<CharT, Traits, Alloc>& fmt, const Streamable& tp)
     -> decltype(to_stream(std::declval<std::basic_ostream<CharT, Traits>&>(), fmt, tp),
-                std::basic_string<CharT, Traits>{})
+                std::basic_string<CharT, Traits, Alloc>{})
 {
     std::basic_ostringstream<CharT, Traits> os;
     to_stream(os, fmt.c_str(), tp);
@@ -6269,18 +6269,19 @@ from_stream(std::basic_istream<CharT, Traits>& is, const CharT* fmt,
         d = duration_cast<Duration>(fds.tod.to_duration());
 }
 
-template <class Parsable, class CharT, class Traits = std::char_traits<CharT>>
+template <class Parsable, class CharT, class Traits = std::char_traits<CharT>,
+          class Alloc = std::allocator<CharT>>
 struct parse_manip
 {
-    const std::basic_string<CharT, Traits> format_;
-    Parsable&                              tp_;
-    std::basic_string<CharT, Traits>*      abbrev_;
-    std::chrono::minutes*                  offset_;
+    const std::basic_string<CharT, Traits, Alloc> format_;
+    Parsable&                                     tp_;
+    std::basic_string<CharT, Traits, Alloc>*      abbrev_;
+    std::chrono::minutes*                         offset_;
 
 public:
-    parse_manip(std::basic_string<CharT, Traits> format,
-                    Parsable& tp, std::basic_string<CharT, Traits>* abbrev = nullptr,
-                    std::chrono::minutes* offset = nullptr)
+    parse_manip(std::basic_string<CharT, Traits, Alloc> format, Parsable& tp,
+                std::basic_string<CharT, Traits, Alloc>* abbrev = nullptr,
+                std::chrono::minutes* offset = nullptr)
         : format_(std::move(format))
         , tp_(tp)
         , abbrev_(abbrev)
@@ -6289,58 +6290,58 @@ public:
 
 };
 
-template <class Parsable, class CharT, class Traits>
+template <class Parsable, class CharT, class Traits, class Alloc>
 std::basic_istream<CharT, Traits>&
 operator>>(std::basic_istream<CharT, Traits>& is,
-           const parse_manip<Parsable, CharT, Traits>& x)
+           const parse_manip<Parsable, CharT, Traits, Alloc>& x)
 {
     from_stream(is, x.format_.c_str(), x.tp_, x.abbrev_, x.offset_);
     return is;
 }
 
-template <class Parsable, class CharT, class Traits>
+template <class Parsable, class CharT, class Traits, class Alloc>
 inline
 auto
-parse(const std::basic_string<CharT, Traits>& format, Parsable& tp)
+parse(const std::basic_string<CharT, Traits, Alloc>& format, Parsable& tp)
     -> decltype(from_stream(std::declval<std::basic_istream<CharT, Traits>&>(),
                             format.c_str(), tp),
-                parse_manip<Parsable, CharT, Traits>{format, tp})
+                parse_manip<Parsable, CharT, Traits, Alloc>{format, tp})
 {
     return {format, tp};
 }
 
-template <class Parsable, class CharT, class Traits>
+template <class Parsable, class CharT, class Traits, class Alloc>
 inline
 auto
-parse(const std::basic_string<CharT, Traits>& format, Parsable& tp,
-      std::basic_string<CharT, Traits>& abbrev)
+parse(const std::basic_string<CharT, Traits, Alloc>& format, Parsable& tp,
+      std::basic_string<CharT, Traits, Alloc>& abbrev)
     -> decltype(from_stream(std::declval<std::basic_istream<CharT, Traits>&>(),
                             format.c_str(), tp, &abbrev),
-                parse_manip<Parsable, CharT, Traits>{format, tp, &abbrev})
+                parse_manip<Parsable, CharT, Traits, Alloc>{format, tp, &abbrev})
 {
     return {format, tp, &abbrev};
 }
 
-template <class Parsable, class CharT, class Traits>
+template <class Parsable, class CharT, class Traits, class Alloc>
 inline
 auto
-parse(const std::basic_string<CharT, Traits>& format, Parsable& tp,
+parse(const std::basic_string<CharT, Traits, Alloc>& format, Parsable& tp,
       std::chrono::minutes& offset)
     -> decltype(from_stream(std::declval<std::basic_istream<CharT, Traits>&>(),
                             format.c_str(), tp, nullptr, &offset),
-                parse_manip<Parsable, CharT, Traits>{format, tp, nullptr, &offset})
+                parse_manip<Parsable, CharT, Traits, Alloc>{format, tp, nullptr, &offset})
 {
     return {format, tp, nullptr, &offset};
 }
 
-template <class Parsable, class CharT, class Traits>
+template <class Parsable, class CharT, class Traits, class Alloc>
 inline
 auto
-parse(const std::basic_string<CharT, Traits>& format, Parsable& tp,
-      std::basic_string<CharT, Traits>& abbrev, std::chrono::minutes& offset)
+parse(const std::basic_string<CharT, Traits, Alloc>& format, Parsable& tp,
+      std::basic_string<CharT, Traits, Alloc>& abbrev, std::chrono::minutes& offset)
     -> decltype(from_stream(std::declval<std::basic_istream<CharT, Traits>&>(),
                             format.c_str(), tp, &abbrev, &offset),
-                parse_manip<Parsable, CharT, Traits>{format, tp, &abbrev, &offset})
+                parse_manip<Parsable, CharT, Traits, Alloc>{format, tp, &abbrev, &offset})
 {
     return {format, tp, &abbrev, &offset};
 }
@@ -6357,13 +6358,13 @@ parse(const CharT* format, Parsable& tp)
     return {format, tp};
 }
 
-template <class Parsable, class CharT, class Traits>
+template <class Parsable, class CharT, class Traits, class Alloc>
 inline
 auto
-parse(const CharT* format, Parsable& tp, std::basic_string<CharT, Traits>& abbrev)
+parse(const CharT* format, Parsable& tp, std::basic_string<CharT, Traits, Alloc>& abbrev)
     -> decltype(from_stream(std::declval<std::basic_istream<CharT, Traits>&>(), format,
                             tp, &abbrev),
-                parse_manip<Parsable, CharT, Traits>{format, tp, &abbrev})
+                parse_manip<Parsable, CharT, Traits, Alloc>{format, tp, &abbrev})
 {
     return {format, tp, &abbrev};
 }
@@ -6379,14 +6380,14 @@ parse(const CharT* format, Parsable& tp, std::chrono::minutes& offset)
     return {format, tp, nullptr, &offset};
 }
 
-template <class Parsable, class CharT, class Traits>
+template <class Parsable, class CharT, class Traits, class Alloc>
 inline
 auto
 parse(const CharT* format, Parsable& tp,
-      std::basic_string<CharT, Traits>& abbrev, std::chrono::minutes& offset)
+      std::basic_string<CharT, Traits, Alloc>& abbrev, std::chrono::minutes& offset)
     -> decltype(from_stream(std::declval<std::basic_istream<CharT, Traits>&>(), format,
                             tp, &abbrev, &offset),
-                parse_manip<Parsable, CharT, Traits>{format, tp, &abbrev, &offset})
+                parse_manip<Parsable, CharT, Traits, Alloc>{format, tp, &abbrev, &offset})
 {
     return {format, tp, &abbrev, &offset};
 }
